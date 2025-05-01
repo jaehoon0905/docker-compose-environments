@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  proxy:
+    image: ubuntu/squid:latest # 안정적인 Squid 이미지 사용
+    container_name: squid_proxy
+    ports:
+      - "3128:3128" # 호스트의 3128 포트를 컨테이너의 3128 포트로 매핑
+    volumes:
+      - ./squid.conf:/etc/squid/squid.conf # 로컬 설정 파일 마운트
+      - squid_cache:/var/spool/squid # Squid 캐시를 위한 볼륨
+    restart: unless-stopped
+    networks:
+      - proxy-net
+
+  sniffer:
+    image: nicolaka/netshoot # tcpdump 등 네트워크 도구가 포함된 이미지
+    container_name: proxy_sniffer
+    depends_on:
+      - proxy
+    network_mode: "service:proxy" # proxy 서비스의 네트워크 네임스페이스 공유
+    cap_add:
+      - NET_ADMIN # 네트워크 인터페이스 관리 권한
+      - NET_RAW   # Raw 소켓 사용 권한 (패킷 캡처에 필요)
+    volumes:
+      - ./capture:/capture # 캡처된 파일을 저장할 로컬 디렉토리 마운트
+    # tcpdump 명령: proxy 서비스의 모든 인터페이스(-i any)에서
+    # 프록시 포트(3128)를 사용하는 모든 트래픽(-w)을 /capture/proxy_traffic.pcap 파일에 저장
+    command: tcpdump -i any -w /capture/proxy_traffic.pcap port 3128
+    # restart: 'no' # 캡처는 보통 일회성이므로 재시작 안 함 (필요시 주석 해제)
+
+networks:
+  proxy-net:
+    driver: bridge
+
+volumes:
+  squid_cache: # Squid 캐시 데이터를 위한 명명된 볼륨
